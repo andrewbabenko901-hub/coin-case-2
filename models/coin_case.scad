@@ -25,6 +25,20 @@ coin_d     = 45.2;  // диаметр монеты, мм // [5:0.1:150]
 coin_t     = 3.0;   // толщина монеты, мм // [0.3:0.1:25]
 coin_clear = 0.4;   // зазор вокруг монеты (на сторону), мм // [0:0.05:3]
 
+/* [Форма корпуса] */
+// Корпус строится не «от габарита внутрь», а наоборот: сначала рабочее ядро —
+// карман под монету, вырезы под пальцы и петля, — а поверх него натягивается
+// НАРУЖНЫЙ КОНТУР. Форму контура можно менять, ядро остаётся тем же, поэтому
+// кейс любой формы собирается и печатается одинаково.
+//   0 — скруглённый квадрат   1 — круг (эллипс по габаритам)
+//   2 — стадион               3 — шестигранник
+//   4 — восьмигранник         5 — свой контур (задаётся генератором)
+case_shape = 0;   // форма корпуса // [0:5]
+corner_r_set = 7; // скругление углов у квадрата, мм // [0:0.5:60]
+// Свой контур: точки в долях габарита, 0..1, обход по кругу. Заполняет
+// генератор — либо тем, что нарисовали мышью, либо обводкой картинки.
+custom_outline = [];
+
 /* [Габариты кейса] */
 // Это ЖЕЛАЕМЫЕ габариты одной половинки. Если монета в них не влезает с
 // минимальной стенкой wall_min, размер автоматически увеличивается до
@@ -35,6 +49,24 @@ case_h = 70.0;  // высота (Z), мм // [30:0.5:250]
 case_t = 10.0;  // толщина одной половинки (Y), мм // [4:0.5:50]
 
 wall_min = 1.5; // минимальная толщина стенки вокруг полости, мм // [0.8:0.1:6]
+
+/* [Петля] */
+// Петля сидит в перемычке между половинками. Её ширина больше не привязана
+// к габариту: узкая перемычка даёт компактный шарнир по центру торца,
+// широкая — петлю во всю кромку, как было раньше.
+hinge_w  = 35.5; // ширина петли вдоль высоты, мм // [6:0.5:250]
+hinge_r  = 3.5;  // радиус бочонков петли, мм // [1.5:0.1:12]
+
+/* [Защёлка] */
+// Выступ на крышке и ответное гнездо в основании. Раньше выступ был, а гнезда
+// не было — в закрытом виде они пересекались, и кейс физически не закрывался.
+latch_enable = true;
+latch_count  = 1;    // сколько защёлок: 1 напротив петли, 2 по бокам // [1:2]
+latch_w      = 8.0;  // ширина защёлки вдоль высоты, мм // [3:0.5:40]
+latch_t      = 2.2;  // толщина гребня, мм // [0.8:0.1:6]
+latch_d      = 1.2;  // на сколько выступает над лицом, мм // [0.3:0.1:5]
+latch_inset  = 2.2;  // отступ от наружной кромки, мм // [0.5:0.1:10]
+latch_clear  = 0.15; // зазор гнезда, мм // [0:0.05:0.6]
 
 /* [Карманы под монету] */
 // Диаметр у обеих полостей ОДИН и тот же (считается из диаметра монеты).
@@ -108,17 +140,18 @@ base_color = "";
 /* [Hidden] */
 // --- сопрягаемая геометрия петли (снята с граней исходного STEP) ---------
 knuckle_x = 3.5;    // ось петли/штифта по X — ОБЩАЯ для обеих деталей
-knuckle_r = 3.5;    // радиус "бочонков" петли
-tab_len   = 8.45;   // внутренний край плиты part1 (со стороны петли)
-wall_x    = -1.45;  // внутренний край плиты part2 (зеркально)
-pin_r     = 1.65;   // радиус штифта
+knuckle_r = hinge_r;      // радиус "бочонков" петли — теперь настраивается
+// Кромки плит отодвинуты от оси петли ровно на 1.45 мм больше радиуса
+// бочонка: именно этот зазор и даёт половинкам сложиться, не задев друг друга.
+tab_len   = knuckle_x + hinge_r + 1.45;  // внутренний край плиты part1 (со стороны петли)
+wall_x    = knuckle_x - hinge_r - 1.45; // внутренний край плиты part2 (зеркально)
+pin_r     = min(1.65, hinge_r * 0.47);   // радиус штифта
 pin_clear = 0.35;   // зазор отверстия под штифт в part2
 pin_overhang_set = 1.5; // выступ штифта за торцы (в режиме print обнуляется)
 hinge_side_clear = 0.5; // зазор бочонка part2 в проёме part1 (на сторону)
 
 edge_chamfer   = 0.6; // мелкая фаска по периметру плиты
 pocket_chamfer_set = 1.0; // фаска на входе карманов
-boss_y         = 6.8; // выступ прилива-защёлки над лицевой стороной part1
 
 $fn = 72;
 
@@ -140,13 +173,37 @@ cav_r = cav_d / 2;
 fn_r    = finger_notch_d / 2;
 fn_dist = cav_r;                         // центр выреза — на ободе полости
 
-// Габариты: не меньше, чем полость (или вырезы) + минимальная стенка.
-// Именно поэтому при увеличении монеты корпус растёт сам.
-W_need = max(cav_d, finger_notch_enable ? 2 * fn_r : 0) + 2 * wall_min;
-H_need = max(cav_d + 2 * wall_min,
-             finger_notch_enable ? 2 * (fn_dist + fn_r + wall_min) : 0);
+// Круглые формы держат ядро хуже прямоугольной: у них угол «съеден», и то,
+// что в квадрат влезало впритык, за круг уже вылезает. Поэтому у каждой формы
+// свой коэффициент — во сколько раз габарит должен быть больше вписанного
+// круга, в который ядро гарантированно помещается.
+//   квадрат 1.00 · круг и стадион 1.00 (по меньшей стороне)
+//   восьмигранник 1/cos(22.5°) · шестигранник 1/cos(30°)
+shape_round = (case_shape >= 1);
+shape_fit   = (case_shape == 3) ? 1.1547
+            : (case_shape == 4) ? 1.0824
+            : 1.0;
+// Радиус, в который обязано влезть ядро: полость плюс вырезы плюс стенка.
+core_r = max(cav_r, finger_notch_enable ? fn_dist + fn_r : 0) + wall_min;
+
+// Габариты: не меньше, чем ядро требует. Именно поэтому при увеличении монеты
+// корпус растёт сам, какой бы формы он ни был.
+W_need = shape_round ? 2 * core_r * shape_fit
+                     : max(cav_d, finger_notch_enable ? 2 * fn_r : 0) + 2 * wall_min;
+H_need = shape_round ? 2 * core_r * shape_fit
+                     : max(cav_d + 2 * wall_min,
+                           finger_notch_enable ? 2 * (fn_dist + fn_r + wall_min) : 0);
 W = max(case_w, W_need);
 H = max(case_h, H_need);
+
+// Прямоугольник, который заведомо помещается внутрь контура — в него и
+// зажимается гравировка. У квадрата это весь габарит, у круга — вписанный
+// прямоугольник, он заметно меньше.
+safe_k = (case_shape == 0) ? 1.00
+       : (case_shape == 2) ? 0.86
+       : (case_shape == 3) ? 0.80
+       : (case_shape == 4) ? 0.82
+       : 0.70;
 
 // Глубина полости идёт за толщиной монеты: обе половинки пересчитываются
 // вместе с ней и сохраняют заданную пропорцию lid_share. Подстройки
@@ -170,13 +227,21 @@ cav_depth_total = lid_depth + base_depth;
 coin_gap        = cav_depth_total - coin_t;
 
 // Скругление торца — не больше половины габарита, иначе контур вырождается.
-corner_r      = min(7.0, H / 2 - 0.5, W / 2 - 0.5);
+corner_r      = min(corner_r_set, H / 2 - 0.5, W / 2 - 0.5);
 corner_cz_bot = corner_r;
 corner_cz_top = H - corner_r;
 
-// Проём петли part1 / бочонок part2 — центрируются по H/2 и ужимаются на
-// малых H, чтобы у торцов всегда оставался материал.
-gap_half    = min(17.75, H / 2 - 6);
+// Проём петли part1 / бочонок part2 — центрируются по H/2. Ширину задаёт
+// hinge_w: узкая перемычка даёт компактный шарнир посреди торца, широкая —
+// петлю во всю кромку. Верхний предел — сам габарит, ниже — чтобы у бочонка
+// вообще осталась длина.
+// hinge_w — ширина ВСЕГО шарнира. Он делится на три бочонка: средний
+// (проушина основания) занимает половину, два крайних (проушины крышки) — по
+// четверти. Такие же пропорции были и в исходной детали.
+hinge_w_eff = max(6 * hinge_r, min(hinge_w, H));
+hinge_lo    = H / 2 - hinge_w_eff / 2;
+hinge_hi    = H / 2 + hinge_w_eff / 2;
+gap_half    = hinge_w_eff / 4;          // проём в крышке под средний бочонок
 gap_z_lo    = H / 2 - gap_half;
 gap_z_hi    = H / 2 + gap_half;
 barrel_half = gap_half - hinge_side_clear;
@@ -197,6 +262,11 @@ p1_cx = tab_len + W / 2;  // центр плиты part1 по X
 p2_cx = wall_x  - W / 2;  // центр плиты part2 по X
 face_cz = H / 2;          // центр по Z (общий)
 
+// Защёлка: гребень идёт по контуру у наружной кромки, окна по высоте
+// расставлены симметрично относительно середины.
+latch_span = (latch_count > 1) ? min(H * 0.52, H - latch_w - 2 * wall_min) : 0;
+latch_cham = min(latch_t * 0.35, latch_d * 0.8);
+
 // Фаски карманов — не глубже самого кармана.
 pocket_chamfer     = min(pocket_chamfer_set, lid_depth * 0.5, cav_r * 0.5);
 big_pocket_chamfer = min(pocket_chamfer_set, base_depth * 0.5, cav_r * 0.5);
@@ -212,21 +282,88 @@ fn_z_hi   = H / 2 + fn_dist;
 // Общие вспомогательные модули
 // ===========================================================================
 
-// Контур плиты в плоскости X,Z: прямой внутренний край (со стороны петли) и
-// скруглённый наружный торец. dir = +1 для part1 (растёт вправо), -1 для
-// part2 (растёт влево) — обе плиты зеркальны относительно оси петли.
+// --- НАРУЖНЫЙ КОНТУР -------------------------------------------------------
+// Форма задаётся в своих координатах [0..W] x [0..H]: слева (x = 0) кромка,
+// обращённая к петле, справа — наружный торец. Ядро — карман, вырезы, петля —
+// живёт отдельно и от формы не зависит, поэтому кейс любой формы собирается
+// и печатается одинаково.
+// Лёгкое скругление вершин. Острый угол после фаски по периметру плиты
+// вырождается в иглу, и сетка перестаёт быть герметичной — на шестиграннике
+// это давало одиннадцать «висящих» рёбер. Заодно и в руках приятнее.
+module soften() {
+    r = min(1.2, min(W, H) * 0.04);
+    offset(r = r, $fn = 28) offset(r = -r, $fn = 28) children();
+}
+
+module shape_local() {
+    if (case_shape == 1)                       // круг, на разных габаритах эллипс
+        translate([W / 2, H / 2]) resize([W, H]) circle(d = 1, $fn = 180);
+    else if (case_shape == 2) {                // стадион: два полукруга и вставка
+        r = min(W, H) / 2;
+        hull() {
+            translate([r, H / 2])     circle(r = r, $fn = 120);
+            translate([W - r, H / 2]) circle(r = r, $fn = 120);
+        }
+    }
+    else if (case_shape == 3)                  // шестигранник, вершины по бокам
+        soften() translate([W / 2, H / 2]) scale([W / 2, H / 2])
+            polygon([[1,0], [0.5,1], [-0.5,1], [-1,0], [-0.5,-1], [0.5,-1]]);
+    else if (case_shape == 4)                  // восьмигранник
+        soften() translate([W / 2, H / 2]) resize([W, H])
+            polygon([for (i = [0:7]) [cos(22.5 + 45 * i), sin(22.5 + 45 * i)]]);
+    else if (case_shape == 5 && len(custom_outline) > 2)
+        // Свой контур: точки в долях габарита, обход по кругу.
+        soften() scale([W, H]) polygon(custom_outline);
+    else                                        // скруглённый квадрат
+        offset(r = corner_r, $fn = 48) offset(r = -corner_r)
+            square([W, H]);
+}
+
+// Плита = форма ПЛЮС перемычка под петлю. У круглых форм кромка отходит от
+// оси петли везде, кроме одной точки, — перемычка и держит шарнир, ровно так
+// же, как в исходном эскизе.
 module outline2d(x_inner, dir) {
-    x_corner = x_inner + dir * (W - corner_r);
-    hull() {
-        translate([x_corner, corner_cz_bot]) circle(r = corner_r, $fn = 64);
-        translate([x_corner, corner_cz_top]) circle(r = corner_r, $fn = 64);
-        translate([x_inner, 0]) circle(r = 0.01, $fn = 12);
-        translate([x_inner, H]) circle(r = 0.01, $fn = 12);
+    translate([x_inner, 0]) scale([dir, 1]) union() {
+        shape_local();
+        // Перемычка начинается на сотую долю миллиметра ДО кромки: у форм,
+        // которые касаются кромки одной точкой (шестигранник, круг), контур и
+        // перемычка иначе соприкасаются по касательной, и в сетке остаются
+        // висящие рёбра.
+        // Перемычка чуть шире самого шарнира и начинается на сотую долю
+        // миллиметра ДО кромки. Оба допуска нужны против совпадающих граней:
+        // без первого торцы крайних бочонков ложились ровно на торец
+        // перемычки, без второго контур касался кромки одной точкой — и в том
+        // и в другом случае в сетке оставались висящие рёбра.
+        translate([-0.02, H / 2 - hinge_w_eff / 2 - 0.03])
+            square([max(W * 0.55, corner_r + 1), hinge_w_eff + 0.06]);
     }
 }
 
 module p1_outline() { outline2d(p1_x0, +1); }
 module p2_outline() { outline2d(p2_x0, -1); }
+
+// Гребень защёлки в плане: узкая полоска вдоль контура у наружной кромки,
+// вырезанная окнами по высоте. Строится от самого контура, поэтому одинаково
+// ложится на квадрат, круг и любую нарисованную форму.
+// Смещения окон по высоте: одна защёлка стоит напротив петли, две
+// расходятся симметрично от середины.
+latch_dz = (latch_count > 1) ? [-latch_span / 2, latch_span / 2] : [0];
+
+module latch_plan(x_inner, dir, grow, k) {
+    intersection() {
+        difference() {
+            offset(r = -(latch_inset - grow), $fn = 40) outline2d(x_inner, dir);
+            offset(r = -(latch_inset + latch_t + grow), $fn = 40) outline2d(x_inner, dir);
+        }
+        // Ровно ОДНО окно: если взять оба разом, выпуклая оболочка в
+        // latch_boss/latch_socket перекинет между ними мост.
+        translate([x_inner + dir * W / 2, H / 2 + latch_dz[k]])
+            square([2 * W, latch_w + 2 * grow], center = true);
+        // только наружная половина контура: у петли гребню делать нечего
+        translate([x_inner + dir * (W * 0.75), H / 2])
+            square([W * 1.5, 4 * H], center = true);
+    }
+}
 
 // Выдавливает 2D-фигуру (заданную в плоскости X,Z) вдоль оси Y на толщину
 // thick, начиная с y = yoff. Инкапсулирует поворот осей в одном месте.
@@ -247,7 +384,11 @@ module chamfered_plate(chamfer) {
         }
         hull() {
             xz_extrude(T - chamfer, 0.01) children();
-            xz_extrude(T, 0.01)           offset(-chamfer) children();
+            // Ровно до T, а не до T + 0.01: сотая доля перелёта делала плиту
+            // толще номинала, и в закрытом виде половинки перекрывались на
+            // эту сотую по всей грани. Печати не мешало, но проверку смыкания
+            // сбивало начисто.
+            xz_extrude(T - 0.01, 0.01)    offset(-chamfer) children();
         }
     }
 }
@@ -270,14 +411,16 @@ module knuckle_barrel_profile(x_wall, dir) {
 // на входе и технологический напуск сквозь лицевую грань.
 module coin_pocket(cx, depth, chamfer) {
     ov = 2;
-    profile = [
-        [0, 0],
-        [cav_r, 0],
-        [cav_r, depth - chamfer],
-        [cav_r + chamfer, depth],
-        [cav_r + chamfer, depth + ov],
-        [0, depth + ov]
-    ];
+    // Конус фаски НЕ обрывается ровно на лицевой плоскости, а проходит
+    // сквозь неё тем же уклоном. Вершина профиля, лежавшая точно в плоскости
+    // грани, давала кольцо, где сходятся три поверхности сразу — лицо плиты,
+    // конус фаски и напуск над ним, — и ядро оставляло там до полутора сотен
+    // незамкнутых рёбер. Видимая геометрия при этом та же: на уровне грани
+    // радиус по-прежнему cav_r + chamfer.
+    profile = (chamfer > 0.001)
+        ? [[0, 0], [cav_r, 0], [cav_r, depth - chamfer],
+           [cav_r + chamfer + ov, depth + ov], [0, depth + ov]]
+        : [[0, 0], [cav_r, 0], [cav_r, depth + ov], [0, depth + ov]];
     translate([cx, T - depth, face_cz])
         rotate([-90, 0, 0])
             rotate_extrude($fn = 160) polygon(profile);
@@ -288,33 +431,50 @@ module coin_pocket(cx, depth, chamfer) {
 // ===========================================================================
 
 module p1_knuckle_barrels() {
-    linear_extrude(gap_z_lo) knuckle_barrel_profile(p1_x0, +1);
+    translate([0, 0, hinge_lo])
+        linear_extrude(gap_z_lo - hinge_lo) knuckle_barrel_profile(p1_x0, +1);
     translate([0, 0, gap_z_hi])
-        linear_extrude(H - gap_z_hi) knuckle_barrel_profile(p1_x0, +1);
+        linear_extrude(hinge_hi - gap_z_hi) knuckle_barrel_profile(p1_x0, +1);
 }
 
 module hinge_pin() {
-    translate([knuckle_x, knuckle_y, -pin_overhang])
-        cylinder(r = pin_r, h = H + 2 * pin_overhang, $fn = 32);
+    translate([knuckle_x, knuckle_y, hinge_lo - pin_overhang])
+        cylinder(r = pin_r, h = hinge_w_eff + 2 * pin_overhang, $fn = 32);
 }
 
 // Прилив-защёлка у наружного торца part1. Координаты заданы относительно
 // наружного края и толщины, поэтому прилив едет вместе с габаритами, а не
 // остаётся висеть в воздухе при изменении W/T.
-module boss() {
-    bh = min(8.3, H * 0.5);
-    bz = H / 2 - bh / 2;
-    profile = [
-        [p1_x1 - 2.4, T],
-        [p1_x1,       T],
-        [p1_x1,       T + boss_y],
-        [p1_x1 - 2.4, T + boss_y],
-        [p1_x1 - 3.3, T + boss_y * 0.811],
-        [p1_x1 - 2.4, T + boss_y * 0.622]
-    ];
-    translate([0, 0, bz])
-        linear_extrude(bh)
-            polygon(profile);
+// Гребень защёлки на лице КРЫШКИ. Макушка скошена — половинки наводятся сами,
+// и печатать нависание не приходится.
+latch_steps = 10;
+
+module latch_boss() {
+    if (latch_enable)
+        for (k = [0 : len(latch_dz) - 1]) {
+            y0 = T - 0.2;
+            h  = latch_d + 0.2;
+            for (i = [0 : latch_steps - 1])
+                xz_extrude(y0 + h * i / latch_steps, h / latch_steps + 0.002)
+                    offset(r = -latch_cham * (i + 1) / latch_steps, $fn = 24)
+                        latch_plan(p1_x0, +1, 0, k);
+        }
+}
+
+// Ответное ГНЕЗДО в основании. Раньше его не было вовсе: гребень упирался в
+// сплошную стенку, и кейс физически не закрывался — это видно на разрезе.
+// Гнездо повторяет гребень, ужатый на зазор посадки, и выходит наружу с
+// напуском, чтобы на дне не осталось плёнки.
+module latch_socket() {
+    if (latch_enable)
+        for (k = [0 : len(latch_dz) - 1]) {
+            y0 = T - latch_d - latch_clear;
+            h  = latch_d + latch_clear + 0.5;
+            for (i = [0 : latch_steps - 1])
+                xz_extrude(y0 + h * i / latch_steps, h / latch_steps + 0.002)
+                    offset(r = -latch_cham * (1 - (i + 1) / latch_steps), $fn = 24)
+                        latch_plan(p2_x0, -1, latch_clear, k);
+        }
 }
 
 // Иконки для гравировки. Точки сгенерированы одним источником
@@ -394,8 +554,13 @@ module text_engrave() {
     // Значит строка идёт вдоль оси Z детали (её длину ограничивает H), а
     // строки набираются стопкой вдоль оси X (её ограничивает W). Раньше было
     // наоборот: текст развернули, а плиту под ним — нет, и они разъезжались.
-    avail_line  = H - 2 * (wall_min + 1.5);   // длина строки
-    avail_stack = W - 2 * (wall_min + 1.5);   // высота блока строк
+    // У круглой крышки прямоугольник надписи упирается в дугу раньше, чем в
+    // габарит, поэтому зона ужимается коэффициентом формы safe_k. У квадрата
+    // он равен единице, и всё считается как раньше.
+    safe_h = H * safe_k;
+    safe_w = W * safe_k;
+    avail_line  = safe_h - 2 * (wall_min + 1.5);   // длина строки
+    avail_stack = safe_w - 2 * (wall_min + 1.5);   // высота блока строк
     wmax = n > 0 ? max([for (s = lines) _strw(s)]) : 1;
     icon_res  = icon_type > 0 ? icon_size * 1.25 : 0;
     avail_st2 = avail_stack - icon_res;
@@ -413,10 +578,10 @@ module text_engrave() {
     marg = wall_min + 1.5;
     half_line  = wmax * fit / 2;           // половина длины самой длинной строки
     half_stack = n * pitch / 2;            // половина высоты блока строк
-    lz_lo = marg + half_line;
-    lz_hi = H - marg - half_line;
-    sx_lo = p1_x0 + marg + half_stack;
-    sx_hi = p1_x1 - marg - half_stack;
+    lz_lo = (H - safe_h) / 2 + marg + half_line;
+    lz_hi = (H + safe_h) / 2 - marg - half_line;
+    sx_lo = p1_cx - safe_w / 2 + marg + half_stack;
+    sx_hi = p1_cx + safe_w / 2 - marg - half_stack;
     line_z  = min(max(face_cz - text_shift_h, lz_lo), max(lz_lo, lz_hi));
     stack_x = min(max(p1_cx + text_shift_v - icon_res / 2, sx_lo), max(sx_lo, sx_hi));
     ov = 0.3;
@@ -446,10 +611,10 @@ module text_engrave() {
                 // идёт по -Z, поэтому положительный сдвиг уменьшает z.
                 if (icon_type > 0)
                     let(ihalf  = icon_size / 2,
-                        ix_lo  = p1_x0 + marg + ihalf,
-                        ix_hi  = p1_x1 - marg - ihalf,
-                        iz_lo  = marg + ihalf,
-                        iz_hi  = H - marg - ihalf,
+                        ix_lo  = p1_cx - safe_w / 2 + marg + ihalf,
+                        ix_hi  = p1_cx + safe_w / 2 - marg - ihalf,
+                        iz_lo  = (H - safe_h) / 2 + marg + ihalf,
+                        iz_hi  = (H + safe_h) / 2 - marg - ihalf,
                         ix = min(max(stack_x + half_stack + icon_size * 0.6 + icon_shift_v,
                                      ix_lo), max(ix_lo, ix_hi)),
                         iz = min(max(line_z - icon_shift_h, iz_lo), max(iz_lo, iz_hi)))
@@ -469,7 +634,7 @@ module part1() {
         difference() {
             union() {
                 chamfered_plate(edge_chamfer) p1_outline();
-                boss();
+                latch_boss();
                 p1_knuckle_barrels();
             }
             coin_pocket(p1_cx, lid_depth, pocket_chamfer);
@@ -549,6 +714,7 @@ module part2() {
             p2_knuckle_barrel();
         }
         pin_clearance_hole();
+        latch_socket();
         coin_pocket(p2_cx, base_depth, big_pocket_chamfer);
         if (finger_notch_enable) {
             finger_notch(fn_z_lo);

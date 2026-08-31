@@ -31,12 +31,30 @@ coin_diameter     = 45.2;  // coin diameter, mm // [5:0.1:150]
 coin_thickness     = 3.0;  // coin thickness, mm // [0.3:0.1:25]
 coin_clearance = 0.4;  // clearance around the coin, per side, mm // [0:0.05:3]
 
+/* [Body shape] */
+body_shape = 0;  // 0 rounded square, 1 circle, 2 stadium, 3 hexagon, 4 octagon, 5 own outline // [0:5]
+corner_radius = 7;  // corner radius of the rounded square, mm // [0:0.5:60]
+custom_outline = [];  // own outline, points as fractions of the size
+
 /* [Overall size] */
 case_width = 70.0;  // width of one half, mm // [30:0.5:250]
 case_height = 70.0;  // height of one half, mm // [30:0.5:250]
 case_thickness = 10.0;  // thickness of one half, mm // [4:0.5:50]
 
 min_wall = 1.5;  // minimum wall around the cavity, mm // [0.8:0.1:6]
+
+/* [Hinge] */
+hinge_width  = 35.5;  // hinge width along the height, mm // [6:0.5:250]
+hinge_knuckle_radius  = 3.5;  // hinge knuckle radius, mm // [1.5:0.1:12]
+
+/* [Latch] */
+latch_enable = true;  // add the latch
+latch_count  = 1;  // how many latches: 1 opposite the hinge, 2 at the sides // [1:2]
+latch_w      = 8.0;  // latch width along the height, mm // [3:0.5:40]
+latch_t      = 2.2;  // latch rib thickness, mm // [0.8:0.1:6]
+latch_d      = 1.2;  // how far the latch stands out of the face, mm // [0.3:0.1:5]
+latch_inset  = 2.2;  // latch offset from the outer edge, mm // [0.5:0.1:10]
+latch_clear  = 0.15;  // latch socket clearance, mm // [0:0.05:0.6]
 
 /* [Coin pockets] */
 coin_gap_axial = 0.4;  // free play for the coin through the thickness, mm // [0:0.05:5]
@@ -89,17 +107,16 @@ base_color = "";  // base colour, preview only (STL has no colour)
 
 /* [Hidden] */
 knuckle_x = 3.5;
-knuckle_r = 3.5;
-tab_len   = 8.45;
-wall_x    = -1.45;
-pin_r     = 1.65;
+knuckle_r = hinge_knuckle_radius;
+tab_len   = knuckle_x + hinge_knuckle_radius + 1.45;
+wall_x    = knuckle_x - hinge_knuckle_radius - 1.45;
+pin_r     = min(1.65, hinge_knuckle_radius * 0.47);
 pin_clear = 0.35;
 pin_overhang_set = 1.5;
 hinge_side_clear = 0.5;
 
 edge_chamfer   = 0.6;
 pocket_chamfer_set = 1.0;
-boss_y         = 6.8;
 
 $fn = 72;
 
@@ -109,11 +126,25 @@ cav_r = cav_d / 2;
 fn_r    = finger_notch_d / 2;
 fn_dist = cav_r;
 
-W_need = max(cav_d, finger_notch_enable ? 2 * fn_r : 0) + 2 * min_wall;
-H_need = max(cav_d + 2 * min_wall,
-             finger_notch_enable ? 2 * (fn_dist + fn_r + min_wall) : 0);
+shape_round = (body_shape >= 1);
+shape_fit   = (body_shape == 3) ? 1.1547
+            : (body_shape == 4) ? 1.0824
+            : 1.0;
+core_r = max(cav_r, finger_notch_enable ? fn_dist + fn_r : 0) + min_wall;
+
+W_need = shape_round ? 2 * core_r * shape_fit
+                     : max(cav_d, finger_notch_enable ? 2 * fn_r : 0) + 2 * min_wall;
+H_need = shape_round ? 2 * core_r * shape_fit
+                     : max(cav_d + 2 * min_wall,
+                           finger_notch_enable ? 2 * (fn_dist + fn_r + min_wall) : 0);
 W = max(case_width, W_need);
 H = max(case_height, H_need);
+
+safe_k = (body_shape == 0) ? 1.00
+       : (body_shape == 2) ? 0.86
+       : (body_shape == 3) ? 0.80
+       : (body_shape == 4) ? 0.82
+       : 0.70;
 
 cav_need   = coin_thickness + coin_gap_axial;
 lid_depth  = max(0.4, cav_need * lid_share_of_cavity       + lid_pocket_trim);
@@ -128,11 +159,14 @@ T = max(case_thickness,
 cav_depth_total = lid_depth + base_depth;
 coin_gap        = cav_depth_total - coin_thickness;
 
-corner_r      = min(7.0, H / 2 - 0.5, W / 2 - 0.5);
+corner_r      = min(corner_radius, H / 2 - 0.5, W / 2 - 0.5);
 corner_cz_bot = corner_r;
 corner_cz_top = H - corner_r;
 
-gap_half    = min(17.75, H / 2 - 6);
+hinge_w_eff = max(6 * hinge_knuckle_radius, min(hinge_width, H));
+hinge_lo    = H / 2 - hinge_w_eff / 2;
+hinge_hi    = H / 2 + hinge_w_eff / 2;
+gap_half    = hinge_w_eff / 4;
 gap_z_lo    = H / 2 - gap_half;
 gap_z_hi    = H / 2 + gap_half;
 barrel_half = gap_half - hinge_side_clear;
@@ -152,6 +186,9 @@ p1_cx = tab_len + W / 2;
 p2_cx = wall_x  - W / 2;
 face_cz = H / 2;
 
+latch_span = (latch_count > 1) ? min(H * 0.52, H - latch_w - 2 * min_wall) : 0;
+latch_cham = min(latch_t * 0.35, latch_d * 0.8);
+
 pocket_chamfer     = min(pocket_chamfer_set, lid_depth * 0.5, cav_r * 0.5);
 big_pocket_chamfer = min(pocket_chamfer_set, base_depth * 0.5, cav_r * 0.5);
 
@@ -160,18 +197,59 @@ fn_wall_d = finger_notch_depth - fn_fillet;
 fn_z_lo   = H / 2 - fn_dist;
 fn_z_hi   = H / 2 + fn_dist;
 
+module soften() {
+    r = min(1.2, min(W, H) * 0.04);
+    offset(r = r, $fn = 28) offset(r = -r, $fn = 28) children();
+}
+
+module shape_local() {
+    if (body_shape == 1)
+        translate([W / 2, H / 2]) resize([W, H]) circle(d = 1, $fn = 180);
+    else if (body_shape == 2) {
+        r = min(W, H) / 2;
+        hull() {
+            translate([r, H / 2])     circle(r = r, $fn = 120);
+            translate([W - r, H / 2]) circle(r = r, $fn = 120);
+        }
+    }
+    else if (body_shape == 3)
+        soften() translate([W / 2, H / 2]) scale([W / 2, H / 2])
+            polygon([[1,0], [0.5,1], [-0.5,1], [-1,0], [-0.5,-1], [0.5,-1]]);
+    else if (body_shape == 4)
+        soften() translate([W / 2, H / 2]) resize([W, H])
+            polygon([for (i = [0:7]) [cos(22.5 + 45 * i), sin(22.5 + 45 * i)]]);
+    else if (body_shape == 5 && len(custom_outline) > 2)
+        soften() scale([W, H]) polygon(custom_outline);
+    else
+        offset(r = corner_r, $fn = 48) offset(r = -corner_r)
+            square([W, H]);
+}
+
 module outline2d(x_inner, dir) {
-    x_corner = x_inner + dir * (W - corner_r);
-    hull() {
-        translate([x_corner, corner_cz_bot]) circle(r = corner_r, $fn = 64);
-        translate([x_corner, corner_cz_top]) circle(r = corner_r, $fn = 64);
-        translate([x_inner, 0]) circle(r = 0.01, $fn = 12);
-        translate([x_inner, H]) circle(r = 0.01, $fn = 12);
+    translate([x_inner, 0]) scale([dir, 1]) union() {
+        shape_local();
+        translate([-0.02, H / 2 - hinge_w_eff / 2 - 0.03])
+            square([max(W * 0.55, corner_r + 1), hinge_w_eff + 0.06]);
     }
 }
 
 module p1_outline() { outline2d(p1_x0, +1); }
 module p2_outline() { outline2d(p2_x0, -1); }
+
+latch_dz = (latch_count > 1) ? [-latch_span / 2, latch_span / 2] : [0];
+
+module latch_plan(x_inner, dir, grow, k) {
+    intersection() {
+        difference() {
+            offset(r = -(latch_inset - grow), $fn = 40) outline2d(x_inner, dir);
+            offset(r = -(latch_inset + latch_t + grow), $fn = 40) outline2d(x_inner, dir);
+        }
+        translate([x_inner + dir * W / 2, H / 2 + latch_dz[k]])
+            square([2 * W, latch_w + 2 * grow], center = true);
+        translate([x_inner + dir * (W * 0.75), H / 2])
+            square([W * 1.5, 4 * H], center = true);
+    }
+}
 
 module xz_extrude(yoff, thick) {
     translate([0, yoff, H])
@@ -189,7 +267,7 @@ module chamfered_plate(chamfer) {
         }
         hull() {
             xz_extrude(T - chamfer, 0.01) children();
-            xz_extrude(T, 0.01)           offset(-chamfer) children();
+            xz_extrude(T - 0.01, 0.01)    offset(-chamfer) children();
         }
     }
 }
@@ -206,44 +284,51 @@ module knuckle_barrel_profile(x_wall, dir) {
 
 module coin_pocket(cx, depth, chamfer) {
     ov = 2;
-    profile = [
-        [0, 0],
-        [cav_r, 0],
-        [cav_r, depth - chamfer],
-        [cav_r + chamfer, depth],
-        [cav_r + chamfer, depth + ov],
-        [0, depth + ov]
-    ];
+    profile = (chamfer > 0.001)
+        ? [[0, 0], [cav_r, 0], [cav_r, depth - chamfer],
+           [cav_r + chamfer + ov, depth + ov], [0, depth + ov]]
+        : [[0, 0], [cav_r, 0], [cav_r, depth + ov], [0, depth + ov]];
     translate([cx, T - depth, face_cz])
         rotate([-90, 0, 0])
             rotate_extrude($fn = 160) polygon(profile);
 }
 
 module p1_knuckle_barrels() {
-    linear_extrude(gap_z_lo) knuckle_barrel_profile(p1_x0, +1);
+    translate([0, 0, hinge_lo])
+        linear_extrude(gap_z_lo - hinge_lo) knuckle_barrel_profile(p1_x0, +1);
     translate([0, 0, gap_z_hi])
-        linear_extrude(H - gap_z_hi) knuckle_barrel_profile(p1_x0, +1);
+        linear_extrude(hinge_hi - gap_z_hi) knuckle_barrel_profile(p1_x0, +1);
 }
 
 module hinge_pin() {
-    translate([knuckle_x, knuckle_y, -pin_overhang])
-        cylinder(r = pin_r, h = H + 2 * pin_overhang, $fn = 32);
+    translate([knuckle_x, knuckle_y, hinge_lo - pin_overhang])
+        cylinder(r = pin_r, h = hinge_w_eff + 2 * pin_overhang, $fn = 32);
 }
 
-module boss() {
-    bh = min(8.3, H * 0.5);
-    bz = H / 2 - bh / 2;
-    profile = [
-        [p1_x1 - 2.4, T],
-        [p1_x1,       T],
-        [p1_x1,       T + boss_y],
-        [p1_x1 - 2.4, T + boss_y],
-        [p1_x1 - 3.3, T + boss_y * 0.811],
-        [p1_x1 - 2.4, T + boss_y * 0.622]
-    ];
-    translate([0, 0, bz])
-        linear_extrude(bh)
-            polygon(profile);
+latch_steps = 10;
+
+module latch_boss() {
+    if (latch_enable)
+        for (k = [0 : len(latch_dz) - 1]) {
+            y0 = T - 0.2;
+            h  = latch_d + 0.2;
+            for (i = [0 : latch_steps - 1])
+                xz_extrude(y0 + h * i / latch_steps, h / latch_steps + 0.002)
+                    offset(r = -latch_cham * (i + 1) / latch_steps, $fn = 24)
+                        latch_plan(p1_x0, +1, 0, k);
+        }
+}
+
+module latch_socket() {
+    if (latch_enable)
+        for (k = [0 : len(latch_dz) - 1]) {
+            y0 = T - latch_d - latch_clear;
+            h  = latch_d + latch_clear + 0.5;
+            for (i = [0 : latch_steps - 1])
+                xz_extrude(y0 + h * i / latch_steps, h / latch_steps + 0.002)
+                    offset(r = -latch_cham * (1 - (i + 1) / latch_steps), $fn = 24)
+                        latch_plan(p2_x0, -1, latch_clear, k);
+        }
 }
 
 module icon_shape(kind, s) {
@@ -288,8 +373,10 @@ function _used_lines() = [for (s = [text_line1, text_line2, text_line3,
 module text_engrave() {
     lines = _used_lines();
     n = len(lines);
-    avail_line  = H - 2 * (min_wall + 1.5);
-    avail_stack = W - 2 * (min_wall + 1.5);
+    safe_h = H * safe_k;
+    safe_w = W * safe_k;
+    avail_line  = safe_h - 2 * (min_wall + 1.5);
+    avail_stack = safe_w - 2 * (min_wall + 1.5);
     wmax = n > 0 ? max([for (s = lines) _strw(s)]) : 1;
     icon_res  = icon_type > 0 ? icon_size * 1.25 : 0;
     avail_st2 = avail_stack - icon_res;
@@ -300,10 +387,10 @@ module text_engrave() {
     marg = min_wall + 1.5;
     half_line  = wmax * fit / 2;
     half_stack = n * pitch / 2;
-    lz_lo = marg + half_line;
-    lz_hi = H - marg - half_line;
-    sx_lo = p1_x0 + marg + half_stack;
-    sx_hi = p1_x1 - marg - half_stack;
+    lz_lo = (H - safe_h) / 2 + marg + half_line;
+    lz_hi = (H + safe_h) / 2 - marg - half_line;
+    sx_lo = p1_cx - safe_w / 2 + marg + half_stack;
+    sx_hi = p1_cx + safe_w / 2 - marg - half_stack;
     line_z  = min(max(face_cz - text_shift_h, lz_lo), max(lz_lo, lz_hi));
     stack_x = min(max(p1_cx + text_shift_v - icon_res / 2, sx_lo), max(sx_lo, sx_hi));
     ov = 0.3;
@@ -321,10 +408,10 @@ module text_engrave() {
                                          halign = "center", valign = "center");
                 if (icon_type > 0)
                     let(ihalf  = icon_size / 2,
-                        ix_lo  = p1_x0 + marg + ihalf,
-                        ix_hi  = p1_x1 - marg - ihalf,
-                        iz_lo  = marg + ihalf,
-                        iz_hi  = H - marg - ihalf,
+                        ix_lo  = p1_cx - safe_w / 2 + marg + ihalf,
+                        ix_hi  = p1_cx + safe_w / 2 - marg - ihalf,
+                        iz_lo  = (H - safe_h) / 2 + marg + ihalf,
+                        iz_hi  = (H + safe_h) / 2 - marg - ihalf,
                         ix = min(max(stack_x + half_stack + icon_size * 0.6 + icon_shift_v,
                                      ix_lo), max(ix_lo, ix_hi)),
                         iz = min(max(line_z - icon_shift_h, iz_lo), max(iz_lo, iz_hi)))
@@ -343,7 +430,7 @@ module part1() {
         difference() {
             union() {
                 chamfered_plate(edge_chamfer) p1_outline();
-                boss();
+                latch_boss();
                 p1_knuckle_barrels();
             }
             coin_pocket(p1_cx, lid_depth, pocket_chamfer);
@@ -409,6 +496,7 @@ module part2() {
             p2_knuckle_barrel();
         }
         pin_clearance_hole();
+        latch_socket();
         coin_pocket(p2_cx, base_depth, big_pocket_chamfer);
         if (finger_notch_enable) {
             finger_notch(fn_z_lo);
