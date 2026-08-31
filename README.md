@@ -31,7 +31,7 @@
 3. В репозитории: **Settings → Pages → Build and deployment → Source: GitHub
    Actions**.
 4. Всё. Дальше каждый `push` в основную ветку обновляет сайт сам — этим
-   занимается `.github/workflows/pages.yml`.
+   занимается `.github/workflows/static.yml`.
 
 Адрес получится вида `https://ВАШ-ЛОГИН.github.io/ИМЯ-РЕПОЗИТОРИЯ/`. Свой домен
 привязывается там же, в настройках Pages.
@@ -58,7 +58,7 @@ models/coin_case_makerworld.scad  та же модель с английским
 vendor/openscad/openscad.js    OpenSCAD, собранный под браузер (13 МБ)
 vendor/openscad/worker.js      расчёт в отдельном потоке + подключение шрифтов
 vendor/fonts/*.ttf             шрифты для гравировки
-.github/workflows/pages.yml    автопубликация
+.github/workflows/static.yml   автопубликация
 ```
 
 Файлы в `models/` — для тех, кто придёт в репозиторий за исходником. Страница
